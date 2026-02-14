@@ -1,14 +1,23 @@
-# 🎯 Countdown API - Generador de Imágenes Dinámicas
+# 🎯 Countdown GIF API - Generador de GIFs Animados
 
-API para generar imágenes de cuenta atrás en tiempo real, perfecta para campañas de email en Klaviyo.
+API para generar **GIFs animados** de cuenta atrás en tiempo real, perfecta para campañas de email en Klaviyo.
 
 ## ✨ Características
 
+- ✅ **GIF animado** - ¡Se ve el tiempo bajando segundo a segundo!
 - ✅ **Sin marca de agua** - 100% tuyo
-- ✅ **Tiempo real** - Se actualiza automáticamente
-- ✅ **Personalizable** - Colores, fechas, horas
+- ✅ **Tiempo real** - Se calcula cuando alguien abre el email
+- ✅ **Personalizable** - Colores, fechas, duración
 - ✅ **Gratis** - Sin límites ni costos
-- ✅ **Fácil de usar** - Solo una URL
+- ✅ **Loop infinito** - El GIF se repite automáticamente
+
+## 🎬 ¿Cómo funciona?
+
+Cuando alguien abre tu email:
+1. La API calcula el tiempo restante hasta tu fecha objetivo
+2. Genera un GIF de 30-60 segundos mostrando el contador bajando
+3. El GIF se reproduce en loop, dando sensación de actualización constante
+4. Cada vez que alguien abre el email, se genera con el tiempo actual
 
 ## 🚀 Instalación Local
 
@@ -49,6 +58,13 @@ http://localhost:3000/countdown?date=2026-02-27&time=21:00&bg=000000&color=FFFFF
 | `time` | ✅ Sí | Hora objetivo (HH:MM) | `21:00` |
 | `bg` | ❌ No | Color de fondo (hex sin #) | `000000` |
 | `color` | ❌ No | Color de texto (hex sin #) | `FFFFFF` |
+| `duration` | ❌ No | Duración del GIF en segundos (default: 60, max: 300) | `30` |
+
+## 💡 Duración recomendada
+
+- **30 segundos** → Perfecto para emails (~250KB)
+- **60 segundos** → Más animación, más peso (~500KB)
+- **120+ segundos** → Solo si realmente lo necesitas
 
 ## 📧 Uso en Klaviyo
 
@@ -56,13 +72,16 @@ En tu campaña de Klaviyo, usa este código HTML:
 
 ```html
 <div style="text-align: center; background: #000000; padding: 20px;">
-  <img src="https://TU-DOMINIO.com/countdown?date=2026-02-27&time=21:00" 
+  <img src="https://TU-DOMINIO.com/countdown?date=2026-02-27&time=21:00&duration=30" 
        alt="Cuenta atrás" 
        style="max-width: 100%; height: auto;">
 </div>
 ```
 
-**Importante:** Reemplaza `TU-DOMINIO.com` con tu dominio real después del despliegue.
+**Importante:** 
+- Reemplaza `TU-DOMINIO.com` con tu dominio real después del despliegue
+- Usa `duration=30` para emails (más ligero y rápido)
+- El GIF mostrará los segundos bajando en tiempo real cuando se abra el email
 
 ## 🌐 Despliegue en Vercel (GRATIS)
 
