@@ -1,7 +1,5 @@
 const express = require('express');
-const GIFEncoder = require('gifencoder');
-const { createCanvas } = require('pureimage');
-const { PassThrough } = require('stream');
+const { GifWriter } = require('omggif');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -24,67 +22,253 @@ function getTimeDifference(targetDate) {
   return { days, hours, minutes, seconds };
 }
 
-// Función para dibujar un frame del contador
-function drawCountdownFrame(ctx, days, hours, minutes, seconds, width, height, bgColor, textColor) {
-  // Limpiar canvas
-  ctx.fillStyle = bgColor;
-  ctx.fillRect(0, 0, width, height);
+// Convertir hex a RGB
+function hexToRgb(hex) {
+  hex = hex.replace('#', '');
+  return {
+    r: parseInt(hex.substring(0, 2), 16),
+    g: parseInt(hex.substring(2, 4), 16),
+    b: parseInt(hex.substring(4, 6), 16)
+  };
+}
 
-  // Configuración de secciones
+// Dibujar un dígito simple (8x12 pixels) usando una matriz de bits
+const DIGIT_PATTERNS = {
+  '0': [
+    '  ████  ',
+    ' ██  ██ ',
+    '██    ██',
+    '██    ██',
+    '██    ██',
+    '██    ██',
+    '██    ██',
+    '██    ██',
+    '██    ██',
+    ' ██  ██ ',
+    '  ████  ',
+    '        '
+  ],
+  '1': [
+    '   ██   ',
+    ' ████   ',
+    '   ██   ',
+    '   ██   ',
+    '   ██   ',
+    '   ██   ',
+    '   ██   ',
+    '   ██   ',
+    '   ██   ',
+    '   ██   ',
+    ' ██████ ',
+    '        '
+  ],
+  '2': [
+    '  ████  ',
+    ' ██  ██ ',
+    '██    ██',
+    '      ██',
+    '     ██ ',
+    '    ██  ',
+    '   ██   ',
+    '  ██    ',
+    ' ██     ',
+    '██      ',
+    '████████',
+    '        '
+  ],
+  '3': [
+    '  ████  ',
+    ' ██  ██ ',
+    '      ██',
+    '      ██',
+    '   ███  ',
+    '      ██',
+    '      ██',
+    '      ██',
+    '      ██',
+    ' ██  ██ ',
+    '  ████  ',
+    '        '
+  ],
+  '4': [
+    '     ██ ',
+    '    ███ ',
+    '   ████ ',
+    '  ██ ██ ',
+    ' ██  ██ ',
+    '██   ██ ',
+    '████████',
+    '     ██ ',
+    '     ██ ',
+    '     ██ ',
+    '     ██ ',
+    '        '
+  ],
+  '5': [
+    '████████',
+    '██      ',
+    '██      ',
+    '██      ',
+    '██████  ',
+    '     ██ ',
+    '      ██',
+    '      ██',
+    '      ██',
+    ' ██  ██ ',
+    '  ████  ',
+    '        '
+  ],
+  '6': [
+    '  ████  ',
+    ' ██  ██ ',
+    '██      ',
+    '██      ',
+    '██████  ',
+    '███  ██ ',
+    '██    ██',
+    '██    ██',
+    '██    ██',
+    ' ██  ██ ',
+    '  ████  ',
+    '        '
+  ],
+  '7': [
+    '████████',
+    '      ██',
+    '     ██ ',
+    '    ██  ',
+    '   ██   ',
+    '  ██    ',
+    '  ██    ',
+    ' ██     ',
+    ' ██     ',
+    '██      ',
+    '██      ',
+    '        '
+  ],
+  '8': [
+    '  ████  ',
+    ' ██  ██ ',
+    '██    ██',
+    '██    ██',
+    ' ██  ██ ',
+    '  ████  ',
+    ' ██  ██ ',
+    '██    ██',
+    '██    ██',
+    ' ██  ██ ',
+    '  ████  ',
+    '        '
+  ],
+  '9': [
+    '  ████  ',
+    ' ██  ██ ',
+    '██    ██',
+    '██    ██',
+    '██    ██',
+    ' ██  ███',
+    '  ██████',
+    '      ██',
+    '      ██',
+    ' ██  ██ ',
+    '  ████  ',
+    '        '
+  ]
+};
+
+// Función para dibujar texto simple en el buffer
+function drawText(buffer, width, text, x, y, scale, colorIndex) {
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (char === ' ') {
+      x += 6 * scale;
+      continue;
+    }
+    
+    const pattern = DIGIT_PATTERNS[char];
+    if (!pattern) continue;
+
+    for (let row = 0; row < pattern.length; row++) {
+      for (let col = 0; col < pattern[row].length; col++) {
+        if (pattern[row][col] === '█') {
+          // Dibujar pixel con escala
+          for (let sy = 0; sy < scale; sy++) {
+            for (let sx = 0; sx < scale; sx++) {
+              const px = x + col * scale + sx;
+              const py = y + row * scale + sy;
+              if (px >= 0 && px < width && py >= 0 && py < 250) {
+                buffer[py * width + px] = colorIndex;
+              }
+            }
+          }
+        }
+      }
+    }
+    x += 9 * scale;
+  }
+}
+
+// Generar un frame del GIF
+function generateFrame(days, hours, minutes, seconds, width, height, bgIndex, textIndex) {
+  const buffer = new Uint8Array(width * height);
+  buffer.fill(bgIndex); // Fondo
+
+  const scale = 6; // Escala de los dígitos
+  
+  // Dibujar números y etiquetas
   const sections = [
-    { value: String(days).padStart(2, '0'), label: 'DÍAS', x: 100 },
-    { value: String(hours).padStart(2, '0'), label: 'HORAS', x: 280 },
-    { value: String(minutes).padStart(2, '0'), label: 'MINUTOS', x: 460 },
-    { value: String(seconds).padStart(2, '0'), label: 'SEGUNDOS', x: 640 }
+    { value: String(days).padStart(2, '0'), label: 'DIAS', x: 40 },
+    { value: String(hours).padStart(2, '0'), label: 'HORAS', x: 220 },
+    { value: String(minutes).padStart(2, '0'), label: 'MINUTOS', x: 400 },
+    { value: String(seconds).padStart(2, '0'), label: 'SEGUNDOS', x: 600 }
   ];
 
   sections.forEach(section => {
-    // Números grandes
-    ctx.fillStyle = textColor;
-    ctx.font = 'bold 80px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText(section.value, section.x, 130);
-
-    // Etiquetas
-    ctx.font = 'bold 20px Arial';
-    ctx.fillText(section.label, section.x, 180);
+    // Dibujar número (grande)
+    drawText(buffer, width, section.value, section.x, 70, scale, textIndex);
+    
+    // Dibujar label (pequeño)
+    drawText(buffer, width, section.label, section.x + 10, 160, 2, textIndex);
   });
+
+  return buffer;
 }
 
-// Generar GIF animado
-async function generateCountdownGIF(targetDate, bgColor = '#000000', textColor = '#FFFFFF', duration = 60) {
+// Generar GIF animado completo
+function generateCountdownGIF(targetDate, bgColor, textColor, duration) {
   const width = 800;
   const height = 250;
 
-  // Crear encoder
-  const encoder = new GIFEncoder(width, height);
+  // Crear paleta de colores (3 colores: fondo, texto, transparente)
+  const bgRgb = hexToRgb(bgColor);
+  const textRgb = hexToRgb(textColor);
   
-  // Stream para el GIF
-  const stream = new PassThrough();
-  
-  encoder.createReadStream().pipe(stream);
-  encoder.start();
-  encoder.setRepeat(0); // 0 = loop infinito
-  encoder.setDelay(1000); // 1000ms = 1 segundo por frame
-  encoder.setQuality(10); // Calidad (1-20, menor = mejor calidad pero más pesado)
+  const palette = new Uint8Array(256 * 3);
+  // Color 0: fondo
+  palette[0] = bgRgb.r;
+  palette[1] = bgRgb.g;
+  palette[2] = bgRgb.b;
+  // Color 1: texto
+  palette[3] = textRgb.r;
+  palette[4] = textRgb.g;
+  palette[5] = textRgb.b;
 
   // Calcular tiempo inicial
-  let timeData = getTimeDifference(targetDate);
-  let { days, hours, minutes, seconds } = timeData;
+  let { days, hours, minutes, seconds } = getTimeDifference(targetDate);
 
-  // Generar frames (60 frames = 60 segundos de animación)
+  // Crear buffer para el GIF
+  const gifBuffer = new Uint8Array(width * height * duration * 2); // Estimación del tamaño
+  const gif = new GifWriter(gifBuffer, width, height, { loop: 0, palette });
+
+  // Generar frames
   for (let i = 0; i < duration; i++) {
-    // Crear canvas para este frame
-    const canvas = createCanvas(width, height);
-    const ctx = canvas.getContext('2d');
+    const frameData = generateFrame(days, hours, minutes, seconds, width, height, 0, 1);
+    
+    gif.addFrame(0, 0, width, height, frameData, {
+      delay: 100 // 100 * 10ms = 1 segundo
+    });
 
-    // Dibujar frame
-    drawCountdownFrame(ctx, days, hours, minutes, seconds, width, height, bgColor, textColor);
-
-    // Añadir frame al GIF
-    encoder.addFrame(ctx);
-
-    // Decrementar tiempo para el siguiente frame
+    // Decrementar tiempo
     seconds--;
     if (seconds < 0) {
       seconds = 59;
@@ -106,18 +290,11 @@ async function generateCountdownGIF(targetDate, bgColor = '#000000', textColor =
     }
   }
 
-  encoder.finish();
-
-  // Convertir stream a buffer
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    stream.on('data', chunk => chunks.push(chunk));
-    stream.on('end', () => resolve(Buffer.concat(chunks)));
-    stream.on('error', reject);
-  });
+  // Retornar solo la parte usada del buffer
+  return gifBuffer.slice(0, gif.end());
 }
 
-// Ruta principal - info
+// Ruta principal
 app.get('/', (req, res) => {
   res.send(`
     <html>
@@ -152,127 +329,84 @@ app.get('/', (req, res) => {
             border-radius: 5px;
             overflow-x: auto;
           }
-          .warning {
-            background: #fff3cd;
-            border-left: 4px solid #ffc107;
-            padding: 15px;
-            margin: 20px 0;
-          }
         </style>
       </head>
       <body>
-        <h1>🎯 Countdown GIF API - Generador de GIFs Animados</h1>
-        <p>API para generar GIFs animados de cuenta atrás en tiempo real para emails y campañas.</p>
+        <h1>🎯 Countdown GIF API</h1>
+        <p>Genera GIFs animados de cuenta atrás en tiempo real para emails.</p>
         
-        <div class="warning">
-          ⚠️ <strong>Nota:</strong> La primera carga puede tardar 5-10 segundos mientras se genera el GIF. Luego se cachea.
-        </div>
-
         <div class="example">
           <h2>📖 Uso básico</h2>
-          <p>URL: <code>/countdown?date=YYYY-MM-DD&time=HH:MM</code></p>
+          <p><code>/countdown?date=YYYY-MM-DD&time=HH:MM</code></p>
           
-          <h3>Ejemplo (puede tardar unos segundos en cargar):</h3>
-          <img src="/countdown?date=2026-02-27&time=21:00" alt="Countdown" style="max-width: 100%;">
-          <pre>&lt;img src="${req.protocol}://${req.get('host')}/countdown?date=2026-02-27&time=21:00" alt="Cuenta atrás"&gt;</pre>
-        </div>
-
-        <div class="example">
-          <h2>🎨 Personalización</h2>
-          <p>Añade parámetros para personalizar:</p>
-          <ul>
-            <li><code>bg</code> - Color de fondo (hex sin #, ej: 000000)</li>
-            <li><code>color</code> - Color de texto (hex sin #, ej: FFFFFF)</li>
-            <li><code>duration</code> - Duración del GIF en segundos (default: 60, max: 300)</li>
-          </ul>
-          
-          <h3>Ejemplo con 30 segundos de animación:</h3>
-          <img src="/countdown?date=2026-02-27&time=21:00&duration=30" alt="Countdown 30s" style="max-width: 100%;">
+          <h3>Ejemplo:</h3>
+          <img src="/countdown?date=2026-02-27&time=21:00&duration=30" alt="Countdown">
           <pre>&lt;img src="${req.protocol}://${req.get('host')}/countdown?date=2026-02-27&time=21:00&duration=30"&gt;</pre>
         </div>
 
         <div class="example">
-          <h2>📧 Para usar en Klaviyo</h2>
-          <p>Simplemente copia la URL del GIF y pégala en tu email de Klaviyo:</p>
-          <pre>&lt;div style="text-align: center; background: #000000; padding: 20px;"&gt;
-  &lt;img src="${req.protocol}://${req.get('host')}/countdown?date=2026-02-27&time=21:00" alt="Cuenta atrás" style="max-width: 100%;"&gt;
-&lt;/div&gt;</pre>
+          <h2>🎨 Parámetros</h2>
+          <ul>
+            <li><code>date</code> - Fecha (YYYY-MM-DD) ✅ Requerido</li>
+            <li><code>time</code> - Hora (HH:MM) ✅ Requerido</li>
+            <li><code>bg</code> - Color fondo (hex sin #, default: 000000)</li>
+            <li><code>color</code> - Color texto (hex sin #, default: FFFFFF)</li>
+            <li><code>duration</code> - Segundos de animación (default: 60, max: 120)</li>
+          </ul>
+        </div>
+
+        <div class="example">
+          <h2>📧 Para Klaviyo</h2>
+          <pre>&lt;img src="${req.protocol}://${req.get('host')}/countdown?date=2026-02-27&time=21:00&duration=30"&gt;</pre>
         </div>
 
         <div class="example">
           <h2>✅ Características</h2>
           <ul>
-            <li>✅ GIF animado - Se ve el tiempo bajando</li>
+            <li>✅ GIF animado - segundos bajando</li>
             <li>✅ Sin marca de agua</li>
-            <li>✅ Actualización al abrir - Calcula desde el momento que se abre</li>
-            <li>✅ Totalmente personalizable</li>
-            <li>✅ Compatible con todos los clientes de email</li>
-            <li>✅ Loop infinito - Se repite automáticamente</li>
+            <li>✅ 100% JavaScript puro</li>
+            <li>✅ Funciona en Vercel</li>
+            <li>✅ Loop infinito</li>
           </ul>
-        </div>
-
-        <div class="example">
-          <h2>⚡ Rendimiento</h2>
-          <ul>
-            <li>60 segundos de animación = ~500KB</li>
-            <li>30 segundos de animación = ~250KB (recomendado para emails)</li>
-            <li>La primera generación tarda 5-10 segundos</li>
-            <li>Luego se cachea para cargas rápidas</li>
-          </ul>
-          <p><strong>Recomendación:</strong> Usa <code>duration=30</code> para emails (mejor balance entre animación y tamaño)</p>
         </div>
       </body>
     </html>
   `);
 });
 
-// Ruta para generar GIF de cuenta atrás
-app.get('/countdown', async (req, res) => {
+// Ruta para generar GIF
+app.get('/countdown', (req, res) => {
   try {
-    console.log('📸 Generando GIF...');
-    
-    // Obtener parámetros
     const { date, time, bg, color, duration } = req.query;
 
-    // Validar parámetros requeridos
     if (!date || !time) {
-      return res.status(400).send('Faltan parámetros: date (YYYY-MM-DD) y time (HH:MM) son requeridos');
+      return res.status(400).send('Faltan parámetros: date y time son requeridos');
     }
 
-    // Construir fecha objetivo
     const targetDate = `${date}T${time}:00`;
-
-    // Colores personalizados (opcional)
     const bgColor = bg ? `#${bg}` : '#000000';
     const textColor = color ? `#${color}` : '#FFFFFF';
+    const gifDuration = duration ? Math.min(parseInt(duration), 120) : 60;
 
-    // Duración del GIF (default 60 segundos, max 300)
-    const gifDuration = duration ? Math.min(parseInt(duration), 300) : 60;
+    console.log(`Generando GIF de ${gifDuration}s...`);
 
-    console.log(`⏱️  Generando GIF de ${gifDuration} segundos...`);
+    const gifBuffer = generateCountdownGIF(targetDate, bgColor, textColor, gifDuration);
 
-    // Generar GIF
-    const gifBuffer = await generateCountdownGIF(targetDate, bgColor, textColor, gifDuration);
-
-    console.log(`✅ GIF generado: ${(gifBuffer.length / 1024).toFixed(2)}KB`);
-
-    // Configurar headers
     res.set({
       'Content-Type': 'image/gif',
-      'Cache-Control': 'public, max-age=3600', // Cache por 1 hora
+      'Cache-Control': 'public, max-age=3600',
       'Content-Length': gifBuffer.length
     });
 
-    res.send(gifBuffer);
+    res.send(Buffer.from(gifBuffer));
   } catch (error) {
-    console.error('❌ Error generando GIF:', error);
+    console.error('Error:', error);
     res.status(500).send('Error generando el GIF');
   }
 });
 
-// Iniciar servidor
 app.listen(PORT, () => {
-  console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
+  console.log(`🚀 Servidor en http://localhost:${PORT}`);
   console.log(`📸 Ejemplo: http://localhost:${PORT}/countdown?date=2026-02-27&time=21:00`);
-  console.log(`⚡ Usa duration=30 para GIFs más ligeros`);
 });
