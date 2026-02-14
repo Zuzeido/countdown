@@ -239,26 +239,26 @@ function generateCountdownGIF(targetDate, bgColor, textColor, duration) {
   const width = 800;
   const height = 250;
 
-  // Crear paleta de colores (3 colores: fondo, texto, transparente)
+  // Crear paleta de colores en formato hexadecimal (potencia de 2)
   const bgRgb = hexToRgb(bgColor);
   const textRgb = hexToRgb(textColor);
   
-  const palette = new Uint8Array(256 * 3);
-  // Color 0: fondo
-  palette[0] = bgRgb.r;
-  palette[1] = bgRgb.g;
-  palette[2] = bgRgb.b;
-  // Color 1: texto
-  palette[3] = textRgb.r;
-  palette[4] = textRgb.g;
-  palette[5] = textRgb.b;
+  // Convertir RGB a formato hexadecimal 0xRRGGBB
+  const bgHex = (bgRgb.r << 16) | (bgRgb.g << 8) | bgRgb.b;
+  const textHex = (textRgb.r << 16) | (textRgb.g << 8) | textRgb.b;
+  
+  // Paleta con 4 colores (2^2)
+  const palette = [bgHex, textHex, 0x000000, 0x000000];
 
   // Calcular tiempo inicial
   let { days, hours, minutes, seconds } = getTimeDifference(targetDate);
 
   // Crear buffer para el GIF
-  const gifBuffer = new Uint8Array(width * height * duration * 2); // Estimación del tamaño
-  const gif = new GifWriter(gifBuffer, width, height, { loop: 0, palette });
+  const gifBuffer = new Uint8Array(width * height * duration * 2);
+  const gif = new GifWriter(gifBuffer, width, height, { 
+    loop: 0, 
+    palette: palette 
+  });
 
   // Generar frames
   for (let i = 0; i < duration; i++) {
